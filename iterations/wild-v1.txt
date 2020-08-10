@@ -1,0 +1,151 @@
+package wild
+
+import "strings"
+
+// Match - wildcard match function (case-sensitive).
+//
+// adoptation of the wildcard match implementation of Kirk J. Krauss documented in Dr Dobbs
+// https://www.drdobbs.com/architecture-and-design/matching-wildcards-an-empirical-way-to-t/240169123
+//
+// Input parameters:
+//  pattern         - A (potentially) corresponding string with wildcards
+//  search          - A string without wildcards
+//  caseinsensitive - Case insensitive comparison
+//
+// Return value(s):
+//  bool - pattern matched search string
+func Match(pattern, search string, caseinsensitve bool) bool {
+	var (
+		patternStr      []rune
+		searchStr       []rune
+		patternIndex    int = 0 // Index for both tame and wild strings in upper loop
+		searchIndex     int     // Index for tame string, set going into lower loop
+		patternSequence int     // Index for prospective match after '*' (wild string)
+		searchSequence  int     // Index for prospective match (tame string)
+	)
+
+	if caseinsensitve {
+		patternStr = append([]rune(strings.ToLower(pattern)), null)
+		searchStr = append([]rune(strings.ToLower(search)), null)
+	} else {
+		patternStr = append([]rune(pattern), null)
+		searchStr = append([]rune(search), null)
+	}
+
+	// Find a first wildcard, if one exists, and the beginning of any
+	// prospectively matching sequence after it.
+	for {
+		// Check for the end from the start.  Get out fast, if possible.
+		if searchStr[patternIndex] == null {
+			if patternStr[patternIndex] != null {
+				for patternStr[patternIndex] == asterisk {
+					patternIndex++
+
+					if patternStr[patternIndex] == null {
+						return true // "ab" matches "ab*".
+					}
+				}
+
+				return false // "abcd" doesn't match "abc".
+			}
+
+			return true // "abc" matches "abc".
+		} else if patternStr[patternIndex] == asterisk {
+			// Got wild: set up for the second loop and skip on down there.
+			searchIndex = patternIndex
+
+			for patternStr[patternIndex] == asterisk {
+				patternIndex++
+			}
+
+			if patternStr[patternIndex] == null {
+				return true // "abc*" matches "abcd".
+			}
+
+			// Search for the next prospective match.
+			if patternStr[patternIndex] != questionmark {
+				for patternStr[patternIndex] != searchStr[searchIndex] {
+					searchIndex++
+					if searchStr[searchIndex] == null {
+						return false // "a*bc" doesn't match "ab".
+					}
+				}
+			}
+
+			// Keep fallback positions for retry in case of incomplete match.
+			patternSequence = patternIndex
+			searchSequence = searchIndex
+			break
+		} else if patternStr[patternIndex] != searchStr[patternIndex] && patternStr[patternIndex] != questionmark {
+			return false // "abc" doesn't match "abd".
+		}
+
+		patternIndex++ // Everything's a match, so far.
+	}
+
+	// Find any further wildcards and any further matching sequences.
+	for {
+		if patternStr[patternIndex] == asterisk {
+			// Got wild again.
+			for patternStr[patternIndex] == asterisk {
+				patternIndex++
+			}
+
+			if patternStr[patternIndex] == null {
+				return true // "ab*c*" matches "abcd".
+			}
+
+			if searchStr[searchIndex] == null {
+				return false // "*bcd*" doesn't match "abc".
+			}
+
+			// Search for the next prospective match.
+			if patternStr[patternIndex] != questionmark {
+				for patternStr[patternIndex] != searchStr[searchIndex] {
+					searchIndex++
+					if searchStr[searchIndex] == null {
+						return false // "a*b*c" doesn't match "ab".
+					}
+				}
+			}
+
+			// Keep the new fallback positions.
+			patternSequence = patternIndex
+			searchSequence = searchIndex
+		} else if patternStr[patternIndex] != searchStr[searchIndex] && patternStr[patternIndex] != questionmark {
+			// The equivalent portion of the upper loop is really simple.
+			if searchStr[searchIndex] == null {
+				return false // "*bcd" doesn't match "abc".
+			}
+
+			// A fine time for questions.
+			for patternStr[patternSequence] == questionmark {
+				patternSequence++
+				searchSequence++
+			}
+
+			patternIndex = patternSequence
+
+			// Fall back, but never so far again.
+			searchSequence++
+			for patternStr[patternIndex] != searchStr[searchSequence] {
+				if searchStr[searchSequence] == null {
+					return false // "*a*b" doesn't match "ac".
+				}
+				searchSequence++
+			}
+
+			searchIndex = searchSequence
+		}
+
+		// Another check for the end, at the end.
+		if searchStr[searchIndex] == null {
+			// return true:  "*bc" matches "abc".
+			// return false: "*bc" doesn't match "abcd".
+			return patternStr[patternIndex] == null
+		}
+
+		patternIndex++ // Everything's still a match.
+		searchIndex++
+	}
+}
